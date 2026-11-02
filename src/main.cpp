@@ -12,16 +12,17 @@
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"NvidiaInfoGpuMonitorWindow";
+constexpr wchar_t kSettingsRegistryPath[] = L"Software\\NvidiaInfoGpuMonitor";
 constexpr int kTimerId = 1;
 constexpr int kGraphRefreshTimerId = 2;
-constexpr int kSampleIntervalMs = 2000;
+constexpr int kSampleIntervalMs = 1000;
 constexpr int kUpdateSpeedControlId = 102;
 constexpr int kUpdateSpeedButtonId = 103;
 constexpr int kWindowSizeControlId = 104;
 constexpr int kWindowSizeButtonId = 105;
 constexpr int kUpdateSpeedComboWidth = 120;
 constexpr int kUpdateSpeedComboHeight = 28;
-constexpr int kUpdateSpeedDropdownHeight = 260;
+constexpr int kUpdateSpeedDropdownHeight = 440;
 constexpr int kHeaderGroupOffset = 220;
 constexpr int kHistoryCapacity = 172801;
 constexpr int kHeaderHeight = 64;
@@ -98,9 +99,7 @@ struct Sample {
 struct PixelRange {
     unsigned long long minimum = std::numeric_limits<unsigned long long>::max();
     unsigned long long maximum = 0;
-    unsigned int sampleCount = 0;
     bool hasValue = false;
-    bool hasInvalid = false;
 };
 
 struct GpuInfo {
@@ -140,6 +139,66 @@ struct AppState {
     int scrollPosition = 0;
     Fonts fonts;
 };
+
+void LoadSettings(AppState& state) {
+    DWORD sampleIntervalMs = 0;
+    DWORD valueSize = sizeof(sampleIntervalMs);
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsRegistryPath, L"SampleIntervalMs",
+        RRF_RT_REG_DWORD, nullptr, &sampleIntervalMs, &valueSize) == ERROR_SUCCESS) {
+        for (const SamplingOption& option : kSamplingOptions) {
+            if (sampleIntervalMs == static_cast<DWORD>(option.intervalMs)) {
+                state.sampleIntervalMs = option.intervalMs;
+                break;
+            }
+        }
+    }
+
+    DWORD graphWindowSeconds = 0;
+    valueSize = sizeof(graphWindowSeconds);
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsRegistryPath, L"GraphWindowSeconds",
+        RRF_RT_REG_DWORD, nullptr, &graphWindowSeconds, &valueSize) == ERROR_SUCCESS) {
+        for (const WindowSizeOption& option : kWindowSizeOptions) {
+            if (graphWindowSeconds == option.seconds) {
+                state.graphWindowSeconds = option.seconds;
+                break;
+            }
+        }
+    }
+}
+
+void SaveSettings(const AppState& state) {
+    HKEY key = nullptr;
+    if (RegCreateKeyExW(HKEY_CURRENT_USER, kSettingsRegistryPath, 0, nullptr,
+        REG_OPTION_NON_VOLATILE, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS) {
+        return;
+    }
+
+    const DWORD sampleIntervalMs = static_cast<DWORD>(state.sampleIntervalMs);
+    RegSetValueExW(key, L"SampleIntervalMs", 0, REG_DWORD,
+        reinterpret_cast<const BYTE*>(&sampleIntervalMs), sizeof(sampleIntervalMs));
+    const DWORD graphWindowSeconds = state.graphWindowSeconds;
+    RegSetValueExW(key, L"GraphWindowSeconds", 0, REG_DWORD,
+        reinterpret_cast<const BYTE*>(&graphWindowSeconds), sizeof(graphWindowSeconds));
+    RegCloseKey(key);
+}
+
+LRESULT FindSamplingOption(const AppState& state) {
+    for (size_t index = 0; index < kSamplingOptions.size(); ++index) {
+        if (state.sampleIntervalMs == kSamplingOptions[index].intervalMs) {
+            return static_cast<LRESULT>(index);
+        }
+    }
+    return 0;
+}
+
+LRESULT FindWindowSizeOption(const AppState& state) {
+    for (size_t index = 0; index < kWindowSizeOptions.size(); ++index) {
+        if (state.graphWindowSeconds == kWindowSizeOptions[index].seconds) {
+            return static_cast<LRESULT>(index);
+        }
+    }
+    return 0;
+}
 
 std::wstring ToWide(const char* text) {
     if (text == nullptr || *text == '\0') {
@@ -351,13 +410,11 @@ void DrawGraph(HDC dc, const GpuInfo& gpu, RECT bounds, const Fonts& fonts,
         const int bucket = HistoryPointX(sample, left, plotWidth, windowStart, windowMs) - left;
         PixelRange& range = ranges[bucket];
         if (!sample.valid) {
-            range.hasInvalid = true;
             continue;
         }
         const unsigned int load = std::min(sample.load, 100U);
         range.minimum = std::min(range.minimum, static_cast<unsigned long long>(load));
         range.maximum = std::max(range.maximum, static_cast<unsigned long long>(load));
-        ++range.sampleCount;
         range.hasValue = true;
     }
 
@@ -373,7 +430,6 @@ void DrawGraph(HDC dc, const GpuInfo& gpu, RECT bounds, const Fonts& fonts,
                 currentRange.minimum, static_cast<unsigned long long>(load));
             currentRange.maximum = std::max(
                 currentRange.maximum, static_cast<unsigned long long>(load));
-            ++currentRange.sampleCount;
             currentRange.hasValue = true;
         }
     }
@@ -381,31 +437,22 @@ void DrawGraph(HDC dc, const GpuInfo& gpu, RECT bounds, const Fonts& fonts,
     HPEN loadPen = CreatePen(PS_SOLID, 2, kAccent);
     previousPen = SelectObject(dc, loadPen);
     POINT previousCenter{};
-    int previousBucket = 0;
-    unsigned int previousSampleCount = 0;
     bool hasPreviousCenter = false;
     for (int bucket = 0; bucket <= plotWidth; ++bucket) {
         const PixelRange& range = ranges[bucket];
         if (!range.hasValue) {
-            if (range.hasInvalid) {
-                hasPreviousCenter = false;
-            }
             continue;
         }
         const int highY = bottom - plotHeight * static_cast<int>(range.maximum) / 100;
         const int lowY = bottom - plotHeight * static_cast<int>(range.minimum) / 100;
         const POINT center{left + bucket, (highY + lowY) / 2};
-        if (hasPreviousCenter
-            && (bucket - previousBucket > 1 || range.sampleCount <= 1
-                || previousSampleCount <= 1)) {
+        if (hasPreviousCenter) {
             MoveToEx(dc, previousCenter.x, previousCenter.y, nullptr);
             LineTo(dc, center.x, center.y);
         }
         MoveToEx(dc, left + bucket, highY, nullptr);
         LineTo(dc, left + bucket, lowY == highY ? lowY + 1 : lowY);
         previousCenter = center;
-        previousBucket = bucket;
-        previousSampleCount = range.sampleCount;
         hasPreviousCenter = true;
     }
     SelectObject(dc, previousPen);
@@ -481,13 +528,11 @@ void DrawMemoryGraph(HDC dc, const GpuInfo& gpu, RECT bounds, const Fonts& fonts
         const int bucket = HistoryPointX(sample, left, plotWidth, windowStart, windowMs) - left;
         PixelRange& range = ranges[bucket];
         if (!sample.memoryValid) {
-            range.hasInvalid = true;
             continue;
         }
         const unsigned long long memoryUsed = std::min(sample.memoryUsed, maxMemory);
         range.minimum = std::min(range.minimum, memoryUsed);
         range.maximum = std::max(range.maximum, memoryUsed);
-        ++range.sampleCount;
         range.hasValue = true;
     }
 
@@ -502,7 +547,6 @@ void DrawMemoryGraph(HDC dc, const GpuInfo& gpu, RECT bounds, const Fonts& fonts
                 std::min(latestSample.memoryUsed, maxMemory);
             currentRange.minimum = std::min(currentRange.minimum, memoryUsed);
             currentRange.maximum = std::max(currentRange.maximum, memoryUsed);
-            ++currentRange.sampleCount;
             currentRange.hasValue = true;
         }
     }
@@ -510,31 +554,22 @@ void DrawMemoryGraph(HDC dc, const GpuInfo& gpu, RECT bounds, const Fonts& fonts
     HPEN memoryPen = CreatePen(PS_SOLID, 2, kMemory);
     previousPen = SelectObject(dc, memoryPen);
     POINT previousCenter{};
-    int previousBucket = 0;
-    unsigned int previousSampleCount = 0;
     bool hasPreviousCenter = false;
     for (int bucket = 0; bucket <= plotWidth; ++bucket) {
         const PixelRange& range = ranges[bucket];
         if (!range.hasValue) {
-            if (range.hasInvalid) {
-                hasPreviousCenter = false;
-            }
             continue;
         }
         const int highY = bottom - static_cast<int>(plotHeight * range.maximum / maxMemory);
         const int lowY = bottom - static_cast<int>(plotHeight * range.minimum / maxMemory);
         const POINT center{left + bucket, (highY + lowY) / 2};
-        if (hasPreviousCenter
-            && (bucket - previousBucket > 1 || range.sampleCount <= 1
-                || previousSampleCount <= 1)) {
+        if (hasPreviousCenter) {
             MoveToEx(dc, previousCenter.x, previousCenter.y, nullptr);
             LineTo(dc, center.x, center.y);
         }
         MoveToEx(dc, left + bucket, highY, nullptr);
         LineTo(dc, left + bucket, lowY == highY ? lowY + 1 : lowY);
         previousCenter = center;
-        previousBucket = bucket;
-        previousSampleCount = range.sampleCount;
         hasPreviousCenter = true;
     }
     SelectObject(dc, previousPen);
@@ -676,6 +711,32 @@ void PositionHeaderControls(HWND window, const AppState& state) {
         MoveWindow(state.windowSizeButton, windowX, 15, kUpdateSpeedComboWidth,
             kUpdateSpeedComboHeight, TRUE);
     }
+}
+
+void OverlapDropdownBorder(HWND combo, HWND button) {
+    COMBOBOXINFO comboInfo{sizeof(comboInfo)};
+    RECT listBounds{};
+    RECT buttonBounds{};
+    if (!GetComboBoxInfo(combo, &comboInfo) || !comboInfo.hwndList
+        || !GetWindowRect(comboInfo.hwndList, &listBounds)
+        || !GetWindowRect(button, &buttonBounds)) {
+        return;
+    }
+
+    int top = listBounds.top;
+    int height = listBounds.bottom - listBounds.top;
+    if (listBounds.top >= buttonBounds.bottom) {
+        --top;
+        ++height;
+    } else if (listBounds.bottom <= buttonBounds.top) {
+        ++height;
+    } else {
+        return;
+    }
+
+    SetWindowPos(comboInfo.hwndList, nullptr, listBounds.left, top,
+        listBounds.right - listBounds.left, height,
+        SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 void EnableDarkTitleBar(HWND window) {
@@ -854,13 +915,14 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     }
     case WM_CREATE:
         state = reinterpret_cast<AppState*>(GetWindowLongPtrW(window, GWLP_USERDATA));
+        LoadSettings(*state);
         SetWindowTextW(window, L"GPU Monitor");
         EnableDarkTitleBar(window);
         CreateFonts(state->fonts);
         state->dropdownBackground = CreateSolidBrush(kDropdownBackground);
         state->dropdownBorder = CreateSolidBrush(kDropdownBorder);
         state->updateSpeedCombo = CreateWindowExW(0, L"COMBOBOX", nullptr,
-            WS_CHILD | WS_VISIBLE | WS_VSCROLL
+            WS_CHILD | WS_VSCROLL
                 | CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS,
             0, 15, kUpdateSpeedComboWidth, kUpdateSpeedDropdownHeight, window,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(kUpdateSpeedControlId)),
@@ -872,7 +934,8 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
                 SendMessageW(state->updateSpeedCombo, CB_ADDSTRING, 0,
                     reinterpret_cast<LPARAM>(option.label));
             }
-            SendMessageW(state->updateSpeedCombo, CB_SETCURSEL, 2, 0);
+            SendMessageW(state->updateSpeedCombo, CB_SETCURSEL,
+                FindSamplingOption(*state), 0);
             state->updateSpeedButton = CreateWindowExW(0, L"BUTTON", nullptr,
                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
                 0, 15, kUpdateSpeedComboWidth, kUpdateSpeedComboHeight, window,
@@ -880,7 +943,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
                 GetModuleHandleW(nullptr), nullptr);
         }
         state->windowSizeCombo = CreateWindowExW(0, L"COMBOBOX", nullptr,
-            WS_CHILD | WS_VISIBLE | WS_VSCROLL
+            WS_CHILD | WS_VSCROLL
                 | CBS_DROPDOWNLIST | CBS_OWNERDRAWFIXED | CBS_HASSTRINGS,
             0, 15, kUpdateSpeedComboWidth, kUpdateSpeedDropdownHeight, window,
             reinterpret_cast<HMENU>(static_cast<INT_PTR>(kWindowSizeControlId)),
@@ -892,7 +955,8 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
                 SendMessageW(state->windowSizeCombo, CB_ADDSTRING, 0,
                     reinterpret_cast<LPARAM>(option.label));
             }
-            SendMessageW(state->windowSizeCombo, CB_SETCURSEL, 0, 0);
+            SendMessageW(state->windowSizeCombo, CB_SETCURSEL,
+                FindWindowSizeOption(*state), 0);
             state->windowSizeButton = CreateWindowExW(0, L"BUTTON", nullptr,
                 WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_OWNERDRAW,
                 0, 15, kUpdateSpeedComboWidth, kUpdateSpeedComboHeight, window,
@@ -908,21 +972,30 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     case WM_COMMAND:
         if (state && LOWORD(wParam) == kUpdateSpeedButtonId
             && HIWORD(wParam) == BN_CLICKED) {
-            ShowWindow(state->updateSpeedButton, SW_HIDE);
+            EnableWindow(state->updateSpeedButton, FALSE);
+            ShowWindow(state->updateSpeedCombo, SW_SHOW);
+            SetWindowPos(state->updateSpeedButton, HWND_TOP, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             SetFocus(state->updateSpeedCombo);
             SendMessageW(state->updateSpeedCombo, CB_SHOWDROPDOWN, TRUE, 0);
+            OverlapDropdownBorder(state->updateSpeedCombo, state->updateSpeedButton);
             return 0;
         }
         if (state && LOWORD(wParam) == kWindowSizeButtonId
             && HIWORD(wParam) == BN_CLICKED) {
-            ShowWindow(state->windowSizeButton, SW_HIDE);
+            EnableWindow(state->windowSizeButton, FALSE);
+            ShowWindow(state->windowSizeCombo, SW_SHOW);
+            SetWindowPos(state->windowSizeButton, HWND_TOP, 0, 0, 0, 0,
+                SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
             SetFocus(state->windowSizeCombo);
             SendMessageW(state->windowSizeCombo, CB_SHOWDROPDOWN, TRUE, 0);
+            OverlapDropdownBorder(state->windowSizeCombo, state->windowSizeButton);
             return 0;
         }
         if (state && LOWORD(wParam) == kUpdateSpeedControlId
             && HIWORD(wParam) == CBN_CLOSEUP) {
-            ShowWindow(state->updateSpeedButton, SW_SHOW);
+            ShowWindow(state->updateSpeedCombo, SW_HIDE);
+            EnableWindow(state->updateSpeedButton, TRUE);
             InvalidateRect(state->updateSpeedButton, nullptr, FALSE);
             return 0;
         }
@@ -931,18 +1004,19 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             const LRESULT selection = SendMessageW(state->updateSpeedCombo, CB_GETCURSEL, 0, 0);
             if (selection >= 0 && selection < static_cast<LRESULT>(kSamplingOptions.size())) {
                 state->sampleIntervalMs = kSamplingOptions[selection].intervalMs;
+                SaveSettings(*state);
                 SetTimer(window, kTimerId, state->sampleIntervalMs, nullptr);
                 if (!state->gpus.empty()) {
                     UpdateGpuStatus(*state);
                 }
-                InvalidateRect(state->updateSpeedButton, nullptr, FALSE);
                 InvalidateRect(window, nullptr, FALSE);
             }
             return 0;
         }
         if (state && LOWORD(wParam) == kWindowSizeControlId
             && HIWORD(wParam) == CBN_CLOSEUP) {
-            ShowWindow(state->windowSizeButton, SW_SHOW);
+            ShowWindow(state->windowSizeCombo, SW_HIDE);
+            EnableWindow(state->windowSizeButton, TRUE);
             InvalidateRect(state->windowSizeButton, nullptr, FALSE);
             return 0;
         }
@@ -953,6 +1027,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
             if (selection >= 0
                 && selection < static_cast<LRESULT>(kWindowSizeOptions.size())) {
                 state->graphWindowSeconds = kWindowSizeOptions[selection].seconds;
+                SaveSettings(*state);
                 InvalidateRect(window, nullptr, FALSE);
             }
             return 0;
@@ -1135,8 +1210,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int showCommand) {
         return 1;
     }
 
-    HWND window = CreateWindowExW(0, kWindowClass, L"GPU Monitor",
-        WS_OVERLAPPEDWINDOW | WS_VSCROLL, CW_USEDEFAULT, CW_USEDEFAULT, 900, 620,
+    HWND window = CreateWindowExW(WS_EX_COMPOSITED, kWindowClass, L"GPU Monitor",
+        WS_OVERLAPPEDWINDOW | WS_VSCROLL | WS_CLIPCHILDREN,
+        CW_USEDEFAULT, CW_USEDEFAULT, 900, 620,
         nullptr, nullptr, instance, &state);
     if (!window) {
         return 1;

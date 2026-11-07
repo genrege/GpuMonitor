@@ -26,6 +26,12 @@ Launch `GpuMonitor.exe`. The application discovers NVIDIA GPUs exposed by NVML a
 
 GPU discovery and telemetry use NVIDIA's NVML API; this application does not use a vendor-neutral GPU interface. AMD and Intel GPUs are not detected or monitored. On a system with GPUs from multiple vendors, only NVIDIA GPUs exposed through NVML are listed. If NVML initializes successfully but finds no supported NVIDIA GPU, the application reports `No NVIDIA GPUs found`.
 
+Official driver downloads:
+
+- [NVIDIA drivers](https://www.nvidia.com/Download/index.aspx) (required for GPU monitoring in this app)
+- [AMD drivers](https://www.amd.com/en/support/download/drivers.html) (not monitored by this app)
+- [Intel drivers and software](https://www.intel.com/content/www/us/en/download-center/home.html) (not monitored by this app)
+
 ## Build
 
 From a Visual Studio Developer PowerShell:

@@ -14,7 +14,6 @@ namespace {
 constexpr wchar_t kWindowClass[] = L"NvidiaInfoGpuMonitorWindow";
 constexpr wchar_t kSettingsRegistryPath[] = L"Software\\NvidiaInfoGpuMonitor";
 constexpr int kTimerId = 1;
-constexpr int kGraphRefreshTimerId = 2;
 constexpr int kSampleIntervalMs = 1000;
 constexpr int kUpdateSpeedControlId = 102;
 constexpr int kUpdateSpeedButtonId = 103;
@@ -37,40 +36,40 @@ struct SamplingOption {
 
 struct WindowSizeOption {
     const wchar_t* label;
-    unsigned int seconds;
+    unsigned int durationMs;
 };
 
 constexpr std::array<SamplingOption, 15> kSamplingOptions{{
-    { L"0.1 s", 100 },
-    {L"0.25 s", 250 },
-    {L"0.5 s", 500},
+    {L"100 ms", 100},
+    {L"250 ms", 250},
+    {L"500 ms", 500},
     {L"1 s", 1000},
     {L"2 s", 2000},
     {L"5 s", 5000},
     {L"10 s", 10000},
     {L"30 s", 30000},
-    {L"60 s", 60000},
-    {L"120 s", 120000},
-    {L"180 s", 180000},
-    {L"300 s", 300000},
-    {L"600 s", 600000},
-    {L"1800 s", 1800000},
-    {L"3600 s", 3600000},
+    {L"1 minute", 60000},
+    {L"2 minutes", 120000},
+    {L"5 minutes", 300000},
+    {L"10 minutes", 600000},
+    {L"15 minutes", 900000},
+    {L"30 minutes", 1800000},
+    {L"1 hour", 3600000},
 }};
 
 constexpr std::array<WindowSizeOption, 12> kWindowSizeOptions{{
-    {L"1 minute", 60},
-    {L"2 minutes", 120},
-    {L"5 minutes", 300},
-    {L"10 minutes", 600},
-    {L"15 minutes", 900},
-    {L"30 minutes", 1800},
-    {L"1 hour", 3600},
-    {L"2 hours", 7200},
-    {L"4 hours", 14400},
-    {L"8 hours", 28800},
-    {L"12 hours", 43200},
-    {L"24 hours", 86400},
+    {L"1 minute", 60000},
+    {L"2 minutes", 120000},
+    {L"5 minutes", 300000},
+    {L"10 minutes", 600000},
+    {L"15 minutes", 900000},
+    {L"30 minutes", 1800000},
+    {L"1 hour", 3600000},
+    {L"2 hours", 7200000},
+    {L"4 hours", 14400000},
+    {L"8 hours", 28800000},
+    {L"12 hours", 43200000},
+    {L"24 hours", 86400000},
 }};
 
 const COLORREF kBackground = RGB(19, 23, 27);
@@ -134,7 +133,7 @@ struct AppState {
     HBRUSH dropdownBackground = nullptr;
     HBRUSH dropdownBorder = nullptr;
     int sampleIntervalMs = kSampleIntervalMs;
-    unsigned int graphWindowSeconds = 60;
+    unsigned int graphWindowMs = 60000;
     bool nvmlInitialized = false;
     int scrollPosition = 0;
     Fonts fonts;
@@ -153,13 +152,13 @@ void LoadSettings(AppState& state) {
         }
     }
 
-    DWORD graphWindowSeconds = 0;
-    valueSize = sizeof(graphWindowSeconds);
-    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsRegistryPath, L"GraphWindowSeconds",
-        RRF_RT_REG_DWORD, nullptr, &graphWindowSeconds, &valueSize) == ERROR_SUCCESS) {
+    DWORD graphWindowMs = 0;
+    valueSize = sizeof(graphWindowMs);
+    if (RegGetValueW(HKEY_CURRENT_USER, kSettingsRegistryPath, L"GraphWindowMs",
+        RRF_RT_REG_DWORD, nullptr, &graphWindowMs, &valueSize) == ERROR_SUCCESS) {
         for (const WindowSizeOption& option : kWindowSizeOptions) {
-            if (graphWindowSeconds == option.seconds) {
-                state.graphWindowSeconds = option.seconds;
+            if (graphWindowMs == option.durationMs) {
+                state.graphWindowMs = option.durationMs;
                 break;
             }
         }
@@ -176,9 +175,9 @@ void SaveSettings(const AppState& state) {
     const DWORD sampleIntervalMs = static_cast<DWORD>(state.sampleIntervalMs);
     RegSetValueExW(key, L"SampleIntervalMs", 0, REG_DWORD,
         reinterpret_cast<const BYTE*>(&sampleIntervalMs), sizeof(sampleIntervalMs));
-    const DWORD graphWindowSeconds = state.graphWindowSeconds;
-    RegSetValueExW(key, L"GraphWindowSeconds", 0, REG_DWORD,
-        reinterpret_cast<const BYTE*>(&graphWindowSeconds), sizeof(graphWindowSeconds));
+    const DWORD graphWindowMs = state.graphWindowMs;
+    RegSetValueExW(key, L"GraphWindowMs", 0, REG_DWORD,
+        reinterpret_cast<const BYTE*>(&graphWindowMs), sizeof(graphWindowMs));
     RegCloseKey(key);
 }
 
@@ -193,7 +192,7 @@ LRESULT FindSamplingOption(const AppState& state) {
 
 LRESULT FindWindowSizeOption(const AppState& state) {
     for (size_t index = 0; index < kWindowSizeOptions.size(); ++index) {
-        if (state.graphWindowSeconds == kWindowSizeOptions[index].seconds) {
+        if (state.graphWindowMs == kWindowSizeOptions[index].durationMs) {
             return static_cast<LRESULT>(index);
         }
     }
@@ -343,7 +342,8 @@ void FillRectColor(HDC dc, const RECT& bounds, COLORREF color) {
     DeleteObject(brush);
 }
 
-std::wstring FormatWindowDuration(unsigned int seconds) {
+std::wstring FormatWindowDuration(ULONGLONG windowMs) {
+    const unsigned int seconds = static_cast<unsigned int>(windowMs / 1000);
     if (seconds < 3600) {
         const unsigned int minutes = seconds / 60;
         return std::to_wstring(minutes) + (minutes == 1 ? L" minute ago" : L" minutes ago");
@@ -362,7 +362,7 @@ int HistoryPointX(const Sample& sample, int left, int plotWidth,
 }
 
 void DrawGraph(HDC dc, const GpuInfo& gpu, RECT bounds, const Fonts& fonts,
-    ULONGLONG now, ULONGLONG windowMs, unsigned int windowSeconds) {
+    ULONGLONG now, ULONGLONG windowMs) {
     FillRectColor(dc, bounds, kPlotBackground);
 
     const int left = bounds.left + 42;
@@ -458,7 +458,7 @@ void DrawGraph(HDC dc, const GpuInfo& gpu, RECT bounds, const Fonts& fonts,
     SelectObject(dc, previousPen);
     DeleteObject(loadPen);
 
-    DrawText(dc, FormatWindowDuration(windowSeconds),
+    DrawText(dc, FormatWindowDuration(windowMs),
         {left, bounds.bottom - 19, left + 150, bounds.bottom}, fonts.body, kMutedText);
     DrawText(dc, L"now", {right - 42, bounds.bottom - 19, right, bounds.bottom},
         fonts.body, kMutedText, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
@@ -472,7 +472,7 @@ std::wstring FormatMemory(unsigned long long bytes) {
 }
 
 void DrawMemoryGraph(HDC dc, const GpuInfo& gpu, RECT bounds, const Fonts& fonts,
-    ULONGLONG now, ULONGLONG windowMs, unsigned int windowSeconds) {
+    ULONGLONG now, ULONGLONG windowMs) {
     FillRectColor(dc, bounds, kPlotBackground);
 
     const int left = bounds.left + 62;
@@ -575,14 +575,14 @@ void DrawMemoryGraph(HDC dc, const GpuInfo& gpu, RECT bounds, const Fonts& fonts
     SelectObject(dc, previousPen);
     DeleteObject(memoryPen);
 
-    DrawText(dc, FormatWindowDuration(windowSeconds),
+    DrawText(dc, FormatWindowDuration(windowMs),
         {left, bounds.bottom - 19, left + 150, bounds.bottom}, fonts.body, kMutedText);
     DrawText(dc, L"now", {right - 42, bounds.bottom - 19, right, bounds.bottom},
         fonts.body, kMutedText, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
 }
 
 void DrawGpuCard(HDC dc, const GpuInfo& gpu, RECT card, const Fonts& fonts,
-    ULONGLONG now, ULONGLONG windowMs, unsigned int windowSeconds) {
+    ULONGLONG now, ULONGLONG windowMs) {
     FillRectColor(dc, card, kCardBackground);
 
     std::wstring name = gpu.name;
@@ -624,10 +624,10 @@ void DrawGpuCard(HDC dc, const GpuInfo& gpu, RECT card, const Fonts& fonts,
     RECT graphBounds{card.left + 198, card.top + 48, card.right - 16, card.bottom - 12};
     const int graphMiddle = (graphBounds.top + graphBounds.bottom) / 2;
     DrawGraph(dc, gpu, {graphBounds.left, graphBounds.top, graphBounds.right, graphMiddle},
-        fonts, now, windowMs, windowSeconds);
+        fonts, now, windowMs);
     DrawMemoryGraph(dc, gpu,
         {graphBounds.left, graphMiddle, graphBounds.right, graphBounds.bottom}, fonts,
-        now, windowMs, windowSeconds);
+        now, windowMs);
 }
 
 void DrawCombinedVramRow(HDC dc, const AppState& state, RECT bounds, const Fonts& fonts) {
@@ -687,6 +687,18 @@ int ContentHeight(const AppState& state) {
         height += kCardGap + kCombinedVramRowHeight;
     }
     return height;
+}
+
+int CardHeightFor(const AppState& state, int clientHeight) {
+    const int count = static_cast<int>(state.gpus.size());
+    if (count == 0) {
+        return kCardHeight;
+    }
+    int available = clientHeight - kHeaderHeight - 16;
+    if (count > 1) {
+        available -= kCardGap + kCombinedVramRowHeight;
+    }
+    return std::max(kCardHeight, available / count - kCardGap);
 }
 
 void PositionHeaderControls(HWND window, const AppState& state) {
@@ -856,18 +868,18 @@ void PaintWindow(HWND window, AppState& state) {
             messageBounds, state.fonts.heading, kPrimaryText);
     } else {
         const ULONGLONG now = GetTickCount64();
-        const ULONGLONG windowMs =
-            static_cast<ULONGLONG>(state.graphWindowSeconds) * 1000;
+        const ULONGLONG windowMs = state.graphWindowMs;
+        const int cardHeight = CardHeightFor(state, height);
         for (size_t index = 0; index < state.gpus.size(); ++index) {
-            const int top = kHeaderHeight + 12 + static_cast<int>(index) * (kCardHeight + kCardGap)
+            const int top = kHeaderHeight + 12 + static_cast<int>(index) * (cardHeight + kCardGap)
                 - state.scrollPosition;
-            RECT card{18, top, client.right - 18, top + kCardHeight};
+            RECT card{18, top, client.right - 18, top + cardHeight};
             DrawGpuCard(dc, state.gpus[index], card, state.fonts,
-                now, windowMs, state.graphWindowSeconds);
+                now, windowMs);
         }
         if (state.gpus.size() > 1) {
             const int top = kHeaderHeight + 12
-                + static_cast<int>(state.gpus.size()) * (kCardHeight + kCardGap)
+                + static_cast<int>(state.gpus.size()) * (cardHeight + kCardGap)
                 - state.scrollPosition;
             RECT summary{18, top, client.right - 18, top + kCombinedVramRowHeight};
             DrawCombinedVramRow(dc, state, summary, state.fonts);
@@ -966,7 +978,6 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         PositionHeaderControls(window, *state);
         InitializeNvml(*state);
         SetTimer(window, kTimerId, state->sampleIntervalMs, nullptr);
-        SetTimer(window, kGraphRefreshTimerId, 1000, nullptr);
         UpdateScrollBar(window, *state);
         return 0;
     case WM_COMMAND:
@@ -1026,7 +1037,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
                 CB_GETCURSEL, 0, 0);
             if (selection >= 0
                 && selection < static_cast<LRESULT>(kWindowSizeOptions.size())) {
-                state->graphWindowSeconds = kWindowSizeOptions[selection].seconds;
+                state->graphWindowMs = kWindowSizeOptions[selection].durationMs;
                 SaveSettings(*state);
                 InvalidateRect(window, nullptr, FALSE);
             }
@@ -1121,10 +1132,6 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         }
         return DefWindowProcW(window, message, wParam, lParam);
     case WM_TIMER:
-        if (state && wParam == kGraphRefreshTimerId) {
-            InvalidateRect(window, nullptr, FALSE);
-            return 0;
-        }
         if (state && wParam == kTimerId && state->nvmlInitialized) {
             Refresh(*state);
             InvalidateRect(window, nullptr, FALSE);
@@ -1134,6 +1141,7 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
         if (state) {
             PositionHeaderControls(window, *state);
             UpdateScrollBar(window, *state);
+            InvalidateRect(window, nullptr, FALSE);
         }
         return 0;
     case WM_VSCROLL:
@@ -1179,7 +1187,6 @@ LRESULT CALLBACK WindowProc(HWND window, UINT message, WPARAM wParam, LPARAM lPa
     case WM_DESTROY:
         if (state) {
             KillTimer(window, kTimerId);
-            KillTimer(window, kGraphRefreshTimerId);
             if (state->nvmlInitialized) nvmlShutdown();
             DestroyFonts(state->fonts);
             if (state->dropdownBackground) DeleteObject(state->dropdownBackground);

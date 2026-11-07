@@ -20,7 +20,7 @@ Launch `GpuMonitor.exe`. The application discovers NVIDIA GPUs exposed by NVML a
 - Use **UPDATE** to choose a sampling interval from 0.1 seconds to 1 hour.
 - Use **WINDOW** to choose a graph window from 1 minute to 24 hours.
 - Both selections are saved automatically for the current Windows user and restored next time, along with the collapsed panels and the time-label format. If no saved setting is available, the defaults are a 1-second update and a 1-minute graph window.
-- When more than one NVIDIA GPU is detected, a combined VRAM row is shown below the GPU cards.
+- When more than one NVIDIA GPU is detected, a combined panel is shown below the GPU cards with the average GPU load (line) and total VRAM used against the sum of every card's VRAM (bars). With a single GPU it is not shown.
 
 ### Panels and charts
 

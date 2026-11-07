@@ -22,5 +22,5 @@ find_library(NVML_LIBRARY nvml
 
 add_executable(GpuMonitor WIN32 src/main.cpp src/resources.rc)
 target_include_directories(GpuMonitor PRIVATE "${NVML_INCLUDE_DIR}")
-target_link_libraries(GpuMonitor PRIVATE "${NVML_LIBRARY}" user32 gdi32)
+target_link_libraries(GpuMonitor PRIVATE "${NVML_LIBRARY}" user32 gdi32 comdlg32)
 target_compile_definitions(GpuMonitor PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)

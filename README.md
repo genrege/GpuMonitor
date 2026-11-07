@@ -19,7 +19,7 @@ Launch `GpuMonitor.exe`. The application discovers NVIDIA GPUs exposed by NVML a
 
 - Use **UPDATE** to choose a sampling interval from 0.1 seconds to 1 hour.
 - Use **WINDOW** to choose a graph window from 1 minute to 24 hours.
-- Both selections are saved automatically for the current Windows user and restored next time. If no saved setting is available, the defaults are a 1-second update and a 1-minute graph window.
+- Both selections are saved automatically for the current Windows user and restored next time, along with the collapsed panels and the time-label format. If no saved setting is available, the defaults are a 1-second update and a 1-minute graph window.
 - When more than one NVIDIA GPU is detected, a combined VRAM row is shown below the GPU cards.
 
 ### Panels and charts
@@ -27,7 +27,7 @@ Launch `GpuMonitor.exe`. The application discovers NVIDIA GPUs exposed by NVML a
 - Click the header of any GPU card, the combined VRAM row, or the System panel to collapse or expand it. Collapsed state is saved with the other settings.
 - All charts share one time axis. The scrollbar along the bottom of the window moves the visible range through recorded history; drag it fully right to follow live data again. Up to 172,801 samples per series are kept in memory (about 48 hours at 1 s) and are lost when the application closes.
 - Click either time label under a chart to switch every label between relative form (`2 min 14 s ago`) and local clock time. The choice is saved with the other settings.
-- Hover over a chart to see a vertical line at the pointer with the local time and the value at that moment (% or MB) in every chart.
+- Hover over a chart to see a vertical line at the pointer in every chart, each with a box showing the value at that moment (% or MB) in the chart's colour. The load charts also show the local time in yellow at the top.
 - Press **Space** to pause or resume the display. Data keeps being collected while paused, and the charts and readouts resume at the current time.
 
 ## GPU Support

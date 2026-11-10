@@ -12,14 +12,39 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
+    <ClCompile Include="src\main.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\chart.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\draw_util.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\export.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\format.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\gpu_provider.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\layout.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\nvml_provider.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\panels.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\process_list.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\sampling.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\scroll.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\settings.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\window_ui.cpp"><Filter>Source Files</Filter></ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="src\resource.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
+    <ClInclude Include="src\resource.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\app_state.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\chart.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\config.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\draw_util.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\export.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\format.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\gpu_provider.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\layout.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\model.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\nvml_provider.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\panels.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\process_list.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\sampling.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\scroll.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\settings.h"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\window_ui.h"><Filter>Header Files</Filter></ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="src\resources.rc">

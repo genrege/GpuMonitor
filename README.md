@@ -19,16 +19,34 @@ Launch `GpuMonitor.exe`. The application discovers NVIDIA GPUs exposed by NVML a
 
 - Use **UPDATE** to choose a sampling interval from 0.1 seconds to 1 hour.
 - Use **WINDOW** to choose a graph window from 1 minute to 24 hours.
-- Both selections are saved automatically for the current Windows user and restored next time, along with the collapsed panels and the time-label format. If no saved setting is available, the defaults are a 1-second update and a 1-minute graph window.
+- Both selections are saved automatically for the current Windows user and restored next time, along with the panel views, process sort, history option, zoom level and the time-label format. If no saved setting is available, the defaults are a 1-second update and a 1-minute graph window.
 - When more than one NVIDIA GPU is detected, a combined panel is shown below the GPU cards with the average GPU load (line) and total VRAM used against the sum of every card's VRAM (bars). With a single GPU it is not shown.
 
 ### Panels and charts
 
-- Click the header of any GPU card, the combined VRAM row, or the System panel to collapse or expand it. Collapsed state is saved with the other settings.
+- Click the header of any GPU card, the combined panel, or the System panel to cycle its view: charts only, charts plus process list, process list only, collapsed, then back to charts only. Each panel keeps its own view, and the views are saved with the other settings.
 - All charts share one time axis. The scrollbar along the bottom of the window moves the visible range through recorded history; drag it fully right to follow live data again. Up to 172,801 samples per series are kept in memory (about 48 hours at 1 s) and are lost when the application closes.
 - Click either time label under a chart to switch every label between relative form (`2 min 14 s ago`) and local clock time. The choice is saved with the other settings.
 - Hover over a chart to see a vertical line at the pointer in every chart, each with a box showing the value at that moment (% or MB) in the chart's colour. The load charts also show the local time in yellow at the top.
 - Press **Space** to pause or resume the display. Data keeps being collected while paused, and the charts and readouts resume at the current time.
+
+### Process lists
+
+Every GPU card, the combined panel and the System panel can show a process grid with name, PID, load % and memory. The grid sits to the right of the charts when both are shown.
+
+- GPU lists come from NVML. Load is per-process GPU utilization; memory is VRAM in use. Under WDDM the driver often does not report per-process VRAM, in which case memory shows `--`.
+- The combined panel merges processes by PID across GPUs, summing load and memory.
+- The System panel lists all processes with CPU % (share of total CPU) and private working set.
+- Lists refresh once per second, independent of the update interval, and freeze while paused.
+- The grid shows 15 rows at a time; scroll with the mouse wheel over the grid or drag its scrollbar.
+- Click a column header to sort by it; click again to reverse. The default is by name. The sort is shared by all grids and saved.
+- Hover a row to highlight it. Click a row to overlay that process's history in red on the load and memory charts of the same panel (load as a %, memory against the same total as the main chart). Click it again to clear. The overlay is available only while the panel shows both charts and grid.
+- History for a process is recorded from when it is selected. Turn on **Keep history for all processes** in the window's system menu (right-click the title bar) to record every listed process, so the overlay has history immediately. History of a process is discarded when it exits. At most 86,400 samples (24 hours at 1 s) are kept per process.
+- Process lists are not included in exports.
+
+### Zoom
+
+Press **Ctrl++** / **Ctrl+-** to enlarge or shrink the chart and process list text, and **Ctrl+0** to reset. The same actions are under **View** in the system menu. The zoom level is saved.
 
 ## GPU Support
 
